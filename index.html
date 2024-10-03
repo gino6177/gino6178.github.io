@@ -3,26 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Seismic Data Prediction</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <title>Seismic Data Visualization</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- 加载 Chart.js -->
 </head>
 <body>
-    <h1>Seismic Data Prediction</h1>
+    <h1>Seismic Data Visualization</h1>
     <input type="file" id="fileInput" accept=".csv">
     <button onclick="processCSV()">Process CSV</button>
     <canvas id="waveformCanvas" width="600" height="400"></canvas> <!-- 用來顯示波形圖的 Canvas -->
-    <p id="predictionResult"></p>
 
     <script>
-        let model;
-
-        // 加载模型
-        async function loadModel() {
-            model = await tf.loadGraphModel('model/model.json');
-            console.log("Model loaded!");
-        }
-
         // 处理 CSV 文件并绘制波形图
         function processCSV() {
             const fileInput = document.getElementById('fileInput');
@@ -37,7 +27,6 @@
                 const csvData = event.target.result;
                 const data = parseCSV(csvData);
                 drawWaveform(data);
-                predictWaveform(data);
             };
             reader.readAsText(csvFile);
         }
@@ -78,25 +67,6 @@
                 }
             });
         }
-
-        // 生成 Tensor 并进行预测
-        async function predictWaveform(data) {
-            // 将数组转换为 2D 图像张量 (你可以自定义这里的转换过程)
-            const waveformTensor = tf.tensor2d([data]).resizeBilinear([224, 224]).expandDims(0).toFloat();
-            
-            const predictions = await model.predict(waveformTensor);
-            displayPrediction(predictions);
-        }
-
-        // 显示预测结果
-        function displayPrediction(predictions) {
-            const arrivalTimes = predictions[0].arraySync();
-            const confidences = predictions[1].arraySync();
-            const resultText = `First Arrival Time: ${arrivalTimes[0]} with confidence ${confidences[0]}`;
-            document.getElementById('predictionResult').textContent = resultText;
-        }
-
-        loadModel();
     </script>
 </body>
 </html>
