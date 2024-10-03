@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Seismic Data Visualization with Compressed Sensing</title>
+    <title>Seismic Data Visualization with Compressed Sensing (Optimized)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/10.0.0/math.min.js"></script> <!-- 加载 math.js -->
 </head>
 <body>
-    <h1>Seismic Data Visualization v1</h1>
+    <h1>Seismic Data Visualization</h1>
     <input type="file" id="fileInput" accept=".csv">
     <button onclick="processCSV()">Process CSV</button>
     <br><br>
@@ -106,40 +107,22 @@
             drawWaveform(reconstructedSignal, 'compressedWaveformImage');
         }
 
-        // 壓縮感知算法（使用離散余弦變換 DCT）
+        // 壓縮感知算法（使用 math.js 的 DCT）
         function applyCompressedSensingAlgorithm(data, compressionRate) {
             const signalLength = data.length;
-            
-            // 離散余弦變換（DCT）
-            const dct = (signal) => {
-                return new Float64Array(signal.length).map((_, i) => {
-                    return signal.reduce((sum, x_n, n) => {
-                        return sum + x_n * Math.cos(Math.PI * i * (2 * n + 1) / (2 * signal.length));
-                    }, 0);
-                });
-            };
 
-            // 逆離散余弦變換（IDCT）
-            const idct = (coefficients) => {
-                return new Float64Array(coefficients.length).map((_, n) => {
-                    return coefficients.reduce((sum, X_k, k) => {
-                        return sum + X_k * Math.cos(Math.PI * k * (2 * n + 1) / (2 * coefficients.length));
-                    }, 0) / coefficients.length;
-                });
-            };
-
-            // 應用 DCT
-            const dctCoefficients = dct(data);
+            // 使用 math.js 的 DCT
+            const dctCoefficients = math.dct(data);
 
             // 保留前 k 個 DCT 係數
             const k = Math.floor(signalLength * compressionRate);
-            const compressedSignal = new Float64Array(signalLength);
+            const compressedSignal = new Array(signalLength).fill(0);
             for (let i = 0; i < k; i++) {
                 compressedSignal[i] = dctCoefficients[i];
             }
 
-            // 使用 IDCT 重建信號
-            const reconstructedSignal = idct(compressedSignal);
+            // 使用 math.js 的 IDCT 重建信號
+            const reconstructedSignal = math.idct(compressedSignal);
 
             return { reconstructedSignal, compressedSignal };
         }
