@@ -3,21 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Seismic Data Visualization with STFT</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/10.0.0/math.min.js"></script> <!-- 加载 math.js -->
+    <title>Seismic Data Visualization with Optimized STFT</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fft.js/0.3.0/fft.min.js"></script> <!-- 引入 FFT.js -->
 </head>
 <body>
-    <h1>Seismic Data Visualization with STFT</h1>
+    <h1>Seismic Data Visualization</h1>
     <input type="file" id="fileInput" accept=".csv">
-    <button onclick="processCSV()">Process CSV</button>
-    <p id="statusMessage"></p> <!-- 狀態提示 -->
+    <button onclick="processCSV()">Show Waveform</button>
+    <button onclick="applySTFT()">Show STFT</button> <!-- 按钮触发 STFT 计算 -->
+    <p id="statusMessage"></p> <!-- 状态提示 -->
     <br><br>
-    <img id="stftImage" alt="STFT Image" /> <!-- 用來顯示 STFT 圖像 -->
+    <img id="waveformImage" alt="Waveform Image" /> <!-- 用来显示波形图像 -->
+    <img id="stftImage" alt="STFT Image" /> <!-- 用来显示 STFT 图像 -->
 
     <script>
-        let originalData = []; // 保存原始波形數據
+        let originalData = []; // 保存原始波形数据
+        let downsampledData = []; // 保存降采样后的数据
 
-        // 处理 CSV 文件
+        // 创建 Web Worker 处理 STFT 计算
+        const worker = new Worker('worker.js');
+
+        // 当 Web Worker 处理完成后，显示 STFT 图
+        worker.onmessage = function(e) {
+            const { stftData, windowSize } = e.data;
+            drawSTFT(stftData, windowSize);
+            document.getElementById('statusMessage').textContent = 'STFT completed!';
+        };
+
+        // 处理 CSV 文件并生成波形图
         function processCSV() {
             const fileInput = document.getElementById('fileInput');
             if (!fileInput.files.length) {
@@ -30,59 +43,79 @@
             reader.onload = function(event) {
                 const csvData = event.target.result;
                 originalData = parseCSV(csvData);
-                applySTFT(originalData);
+                downsampledData = downsampleData(originalData, 20); // 降采样：每20个点取1个
+                drawWaveform(downsampledData, 'waveformImage');
             };
             reader.readAsText(csvFile);
         }
 
-        // 将 CSV 文件解析成數字數據
+        // 将 CSV 文件解析成数字数据
         function parseCSV(csvData) {
             const rows = csvData.split('\n');
             const data = rows.map(row => {
                 const values = row.split(',');
                 return parseFloat(values[2]); // 提取第三列 velocity(m/s)
-            }).filter(value => !isNaN(value)); // 過濾掉無效值
+            }).filter(value => !isNaN(value)); // 过滤掉无效值
             return data;
         }
 
-        // STFT 計算函數
-        function applySTFT(data) {
-            document.getElementById('statusMessage').textContent = 'Processing STFT...'; // 顯示提示信息
+        // 降采样函数
+        function downsampleData(data, factor) {
+            return data.filter((_, index) => index % factor === 0);
+        }
 
-            const windowSize = 256; // 每個STFT窗口的大小
-            const hopSize = 128; // 窗口之間的重疊大小
-            const sampleRate = 1; // 假設為 1 Hz (可根據實際情況設置)
+        // 使用 Canvas 生成波形图并显示为图像
+        function drawWaveform(data, imageId) {
+            const canvas = document.createElement('canvas');
+            const canvasWidth = 1000;
+            const canvasHeight = 500;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            const ctx = canvas.getContext('2d');
 
-            const stftData = [];
+            // 清空画布
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-            for (let start = 0; start + windowSize <= data.length; start += hopSize) {
-                const segment = data.slice(start, start + windowSize);
-                const windowedSegment = applyWindow(segment);
-                const fftResult = applyFFT(windowedSegment);
-                stftData.push(fftResult);
+            // 计算数据范围
+            const maxValue = Math.max(...data);
+            const minValue = Math.min(...data);
+            const range = maxValue - minValue;
+
+            // 计算每个点之间的水平距离
+            const stepX = canvasWidth / data.length;
+
+            // 计算垂直位置的缩放
+            const scaleY = canvasHeight / range;
+
+            // 开始绘制波形图
+            ctx.beginPath();
+            ctx.moveTo(0, (data[0] - minValue) * scaleY);
+
+            for (let i = 1; i < data.length; i++) {
+                const x = i * stepX;
+                const y = (data[i] - minValue) * scaleY;
+                ctx.lineTo(x, canvasHeight - y); // 反转Y轴方向
             }
 
-            drawSTFT(stftData, windowSize, hopSize, sampleRate);
+            ctx.strokeStyle = 'blue';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // 将 Canvas 转换为图像并显示在网页上
+            const img = document.getElementById(imageId);
+            img.src = canvas.toDataURL(); // 将 Canvas 内容转换为 base64 图像
         }
 
-        // 使用漢明窗進行加窗處理
-        function applyWindow(segment) {
-            const hammingWindow = new Float64Array(segment.length);
-            for (let i = 0; i < segment.length; i++) {
-                hammingWindow[i] = 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / (segment.length - 1));
-            }
-            return segment.map((value, index) => value * hammingWindow[index]);
+        // 应用 STFT 计算，使用 Web Worker
+        function applySTFT() {
+            document.getElementById('statusMessage').textContent = 'Processing STFT...'; // 显示提示信息
+
+            // 发送数据给 Web Worker 进行 STFT 计算
+            worker.postMessage({ data: downsampledData });
         }
 
-        // 使用 math.js 計算 FFT
-        function applyFFT(segment) {
-            const complexSignal = segment.map(value => math.complex(value, 0)); // 將實數信號轉換為復數
-            const fftResult = math.fft(complexSignal);
-            return fftResult.map(c => math.abs(c)); // 返回 FFT 結果的幅度
-        }
-
-        // 畫 STFT 結果並將其顯示為靜態圖像
-        function drawSTFT(stftData, windowSize, hopSize, sampleRate) {
+        // 绘制 STFT 结果并显示为图像
+        function drawSTFT(stftData, windowSize) {
             const canvas = document.createElement('canvas');
             const canvasWidth = stftData.length;
             const canvasHeight = windowSize / 2;
@@ -90,23 +123,22 @@
             canvas.height = canvasHeight;
             const ctx = canvas.getContext('2d');
 
-            // 獲取 STFT 的最大幅度，用來做幅度歸一化
+            // 获取 STFT 的最大幅度，用来做幅度归一化
             const maxAmplitude = Math.max(...stftData.flat());
 
-            // 繪製 STFT 結果
+            // 绘制 STFT 结果
             for (let t = 0; t < stftData.length; t++) {
                 for (let f = 0; f < canvasHeight; f++) {
                     const magnitude = stftData[t][f] / maxAmplitude;
                     const colorValue = Math.floor(magnitude * 255);
                     ctx.fillStyle = `rgb(${colorValue}, ${colorValue}, ${colorValue})`;
-                    ctx.fillRect(t, canvasHeight - f, 1, 1); // 顯示為灰度圖像
+                    ctx.fillRect(t, canvasHeight - f, 1, 1); // 显示为灰度图像
                 }
             }
 
-            // 將 Canvas 轉換為圖像並顯示
+            // 将 Canvas 转换为图像并显示
             const img = document.getElementById('stftImage');
             img.src = canvas.toDataURL();
-            document.getElementById('statusMessage').textContent = 'STFT completed!';
         }
     </script>
 </body>
