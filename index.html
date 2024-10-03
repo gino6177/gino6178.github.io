@@ -17,6 +17,7 @@
     <script>
         let model;
 
+        // 加载模型
         async function loadModel() {
             model = await tf.loadGraphModel('model/model.json');
             console.log("Model loaded!");
@@ -45,9 +46,9 @@
         function parseCSV(csvData) {
             const rows = csvData.split('\n');
             const data = rows.map(row => {
-                const values = row.split(',').map(Number);
-                return values[0]; // 假設CSV的每一行只有一列數據（單一波形值）
-            });
+                const values = row.split(',');
+                return parseFloat(values[2]); // 提取第三列 velocity(m/s)
+            }).filter(value => !isNaN(value)); // 過濾掉無效值
             return data;
         }
 
