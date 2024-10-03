@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Seismic Data Visualization with Compressed Sensing (Optimized)</title>
+    <title>Seismic Data Visualization with Compressed Sensing (Web Worker Optimized)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/10.0.0/math.min.js"></script> <!-- 加载 math.js -->
 </head>
 <body>
@@ -12,6 +12,7 @@
     <button onclick="processCSV()">Process CSV</button>
     <br><br>
     <button onclick="applyCompressedSensing()">Apply Compressed Sensing</button> <!-- 壓縮感知按鈕 -->
+    <p id="statusMessage"></p> <!-- 狀態提示 -->
     <br><br>
     <img id="waveformImage" alt="Waveform Image" /> <!-- 用來顯示波形圖像 -->
     <img id="compressedWaveformImage" alt="Compressed Waveform Image" /> <!-- 顯示壓縮後的波形圖像 -->
@@ -19,6 +20,16 @@
     <script>
         let originalData = []; // 保存原始波形數據
         let downsampledData = []; // 保存降采樣後的數據
+
+        // 創建 Web Worker 處理壓縮感知
+        const worker = new Worker('worker.js');
+
+        // Web Worker 處理完成後，顯示壓縮後的波形圖
+        worker.onmessage = function(e) {
+            const { reconstructedSignal } = e.data;
+            drawWaveform(reconstructedSignal, 'compressedWaveformImage');
+            document.getElementById('statusMessage').textContent = 'Compression completed!'; // 更新狀態信息
+        };
 
         // 处理 CSV 文件並生成波形圖
         function processCSV() {
@@ -96,35 +107,14 @@
             img.src = canvas.toDataURL(); // 將 Canvas 內容轉換為 base64 圖像
         }
 
-        // 應用壓縮感知算法
+        // 應用壓縮感知算法，使用 Web Worker
         function applyCompressedSensing() {
+            document.getElementById('statusMessage').textContent = 'Processing compression...'; // 顯示提示信息
+
             const compressionRate = 0.1; // 壓縮比例（保留 10% 的係數）
 
-            // 使用離散余弦變換(DCT)壓縮數據
-            const { reconstructedSignal } = applyCompressedSensingAlgorithm(downsampledData, compressionRate);
-
-            // 繪製壓縮後的波形圖
-            drawWaveform(reconstructedSignal, 'compressedWaveformImage');
-        }
-
-        // 壓縮感知算法（使用 math.js 的 DCT）
-        function applyCompressedSensingAlgorithm(data, compressionRate) {
-            const signalLength = data.length;
-
-            // 使用 math.js 的 DCT
-            const dctCoefficients = math.dct(data);
-
-            // 保留前 k 個 DCT 係數
-            const k = Math.floor(signalLength * compressionRate);
-            const compressedSignal = new Array(signalLength).fill(0);
-            for (let i = 0; i < k; i++) {
-                compressedSignal[i] = dctCoefficients[i];
-            }
-
-            // 使用 math.js 的 IDCT 重建信號
-            const reconstructedSignal = math.idct(compressedSignal);
-
-            return { reconstructedSignal, compressedSignal };
+            // 通知 Web Worker 處理壓縮感知
+            worker.postMessage({ data: downsampledData, compressionRate: compressionRate });
         }
     </script>
 </body>
