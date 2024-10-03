@@ -5,12 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seismic Data Prediction</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- 加载 Chart.js -->
 </head>
 <body>
     <h1>Seismic Data Prediction</h1>
-    <input type="file" id="fileInput" accept="image/*">
-    <button onclick="predict()">Predict</button>
-    <canvas id="imageCanvas"></canvas>
+    <input type="file" id="fileInput" accept=".csv">
+    <button onclick="processCSV()">Process CSV</button>
+    <canvas id="waveformCanvas" width="600" height="400"></canvas> <!-- 用來顯示波形圖的 Canvas -->
     <p id="predictionResult"></p>
 
     <script>
@@ -21,33 +22,72 @@
             console.log("Model loaded!");
         }
 
-        async function predict() {
+        // 处理 CSV 文件并绘制波形图
+        function processCSV() {
             const fileInput = document.getElementById('fileInput');
             if (!fileInput.files.length) {
-                alert("Please upload an image.");
+                alert("Please upload a CSV file.");
                 return;
             }
 
-            const imageFile = fileInput.files[0];
+            const csvFile = fileInput.files[0];
             const reader = new FileReader();
-            reader.onload = async function(event) {
-                const img = new Image();
-                img.src = event.target.result;
-                img.onload = async function() {
-                    const canvas = document.getElementById('imageCanvas');
-                    const ctx = canvas.getContext('2d');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0, img.width, img.height);
-
-                    const imageTensor = tf.browser.fromPixels(canvas).resizeBilinear([224, 224]).expandDims(0).toFloat();
-                    const predictions = await model.predict(imageTensor);
-                    displayPrediction(predictions);
-                };
+            reader.onload = function(event) {
+                const csvData = event.target.result;
+                const data = parseCSV(csvData);
+                drawWaveform(data);
+                predictWaveform(data);
             };
-            reader.readAsDataURL(imageFile);
+            reader.readAsText(csvFile);
         }
 
+        // 将 CSV 文件解析成數字數據
+        function parseCSV(csvData) {
+            const rows = csvData.split('\n');
+            const data = rows.map(row => {
+                const values = row.split(',').map(Number);
+                return values[0]; // 假設CSV的每一行只有一列數據（單一波形值）
+            });
+            return data;
+        }
+
+        // 使用 Chart.js 绘制波形图
+        function drawWaveform(data) {
+            const ctx = document.getElementById('waveformCanvas').getContext('2d');
+            const labels = data.map((_, index) => index); // 使用索引作为X轴标签
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Waveform',
+                        data: data,
+                        borderColor: 'blue',
+                        borderWidth: 2,
+                        fill: false,
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        // 生成 Tensor 并进行预测
+        async function predictWaveform(data) {
+            // 将数组转换为 2D 图像张量 (你可以自定义这里的转换过程)
+            const waveformTensor = tf.tensor2d([data]).resizeBilinear([224, 224]).expandDims(0).toFloat();
+            
+            const predictions = await model.predict(waveformTensor);
+            displayPrediction(predictions);
+        }
+
+        // 显示预测结果
         function displayPrediction(predictions) {
             const arrivalTimes = predictions[0].arraySync();
             const confidences = predictions[1].arraySync();
