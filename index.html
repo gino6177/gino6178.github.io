@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seismic Data Prediction</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+</head>
+<body>
+    <h1>Seismic Data Prediction</h1>
+    <input type="file" id="fileInput" accept="image/*">
+    <button onclick="predict()">Predict</button>
+    <canvas id="imageCanvas"></canvas>
+    <p id="predictionResult"></p>
+
+    <script>
+        let model;
+
+        async function loadModel() {
+            model = await tf.loadGraphModel('model/model.json');
+            console.log("Model loaded!");
+        }
+
+        async function predict() {
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files.length) {
+                alert("Please upload an image.");
+                return;
+            }
+
+            const imageFile = fileInput.files[0];
+            const reader = new FileReader();
+            reader.onload = async function(event) {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = async function() {
+                    const canvas = document.getElementById('imageCanvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0, img.width, img.height);
+
+                    const imageTensor = tf.browser.fromPixels(canvas).resizeBilinear([224, 224]).expandDims(0).toFloat();
+                    const predictions = await model.predict(imageTensor);
+                    displayPrediction(predictions);
+                };
+            };
+            reader.readAsDataURL(imageFile);
+        }
+
+        function displayPrediction(predictions) {
+            const arrivalTimes = predictions[0].arraySync();
+            const confidences = predictions[1].arraySync();
+            const resultText = `First Arrival Time: ${arrivalTimes[0]} with confidence ${confidences[0]}`;
+            document.getElementById('predictionResult').textContent = resultText;
+        }
+
+        loadModel();
+    </script>
+</body>
+</html>
