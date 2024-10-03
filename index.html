@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seismic Data Visualization</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- 加载 Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script> <!-- 加载缩放/平移插件 -->
 </head>
 <body>
     <h1>Seismic Data Visualization</h1>
@@ -13,7 +14,16 @@
     <canvas id="waveformCanvas" width="600" height="400"></canvas> <!-- 用來顯示波形圖的 Canvas -->
 
     <script>
-        // 处理 CSV 文件并绘制波形图
+        // 創建 Web Worker 用於處理 CSV 數據
+        const worker = new Worker('dataProcessor.js');
+
+        // 當數據處理完成後從 Web Worker 接收數據並繪製波形圖
+        worker.onmessage = function(e) {
+            const processedData = e.data;
+            drawWaveform(processedData); // 繪製波形圖
+        };
+
+        // 用於處理 CSV 文件
         function processCSV() {
             const fileInput = document.getElementById('fileInput');
             if (!fileInput.files.length) {
@@ -25,33 +35,26 @@
             const reader = new FileReader();
             reader.onload = function(event) {
                 const csvData = event.target.result;
-                const data = parseCSV(csvData);
-                drawWaveform(data);
+                worker.postMessage(csvData); // 將 CSV 數據發送給 Web Worker 進行處理
             };
             reader.readAsText(csvFile);
         }
 
-        // 将 CSV 文件解析成數字數據
-        function parseCSV(csvData) {
-            const rows = csvData.split('\n');
-            const data = rows.map(row => {
-                const values = row.split(',');
-                return parseFloat(values[2]); // 提取第三列 velocity(m/s)
-            }).filter(value => !isNaN(value)); // 過濾掉無效值
-            return data;
-        }
-
-        // 使用 Chart.js 绘制波形图
+        // 使用 Chart.js 繪製波形圖
         function drawWaveform(data) {
             const ctx = document.getElementById('waveformCanvas').getContext('2d');
-            const labels = data.map((_, index) => index); // 使用索引作为X轴标签
-            new Chart(ctx, {
+            
+            // 初始顯示部分數據
+            const initialData = data.slice(0, 1000); // 只顯示前 1000 個點
+            const labels = initialData.map((_, index) => index); // 使用索引作为X轴标签
+            
+            const chart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [{
                         label: 'Waveform',
-                        data: data,
+                        data: initialData,
                         borderColor: 'blue',
                         borderWidth: 2,
                         fill: false,
@@ -62,6 +65,29 @@
                         x: {
                             type: 'linear',
                             position: 'bottom'
+                        }
+                    },
+                    plugins: {
+                        zoom: {
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                            },
+                            zoom: {
+                                enabled: true,
+                                mode: 'x',
+                                onZoom: function({chart}) {
+                                    // 在缩放事件上动态载入数据
+                                    const xAxisRange = Math.max(0, chart.scales.x.min);
+                                    const yAxisRange = Math.min(chart.scales.x.max, data.length);
+
+                                    // 动态加载在可视区域的数据
+                                    const visibleData = data.slice(xAxisRange, yAxisRange);
+                                    chart.data.labels = visibleData.map((_, index) => index + xAxisRange);
+                                    chart.data.datasets[0].data = visibleData;
+                                    chart.update();
+                                }
+                            }
                         }
                     }
                 }
