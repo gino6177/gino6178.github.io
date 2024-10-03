@@ -3,15 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Seismic Data Visualization with Downsampling</title>
+    <title>Seismic Data Visualization with Compressed Sensing</title>
 </head>
 <body>
-    <h1>Seismic Data Visualization</h1>
+    <h1>Seismic Data Visualization v1</h1>
     <input type="file" id="fileInput" accept=".csv">
     <button onclick="processCSV()">Process CSV</button>
+    <br><br>
+    <button onclick="applyCompressedSensing()">Apply Compressed Sensing</button> <!-- 壓縮感知按鈕 -->
+    <br><br>
     <img id="waveformImage" alt="Waveform Image" /> <!-- 用來顯示波形圖像 -->
-    
+    <img id="compressedWaveformImage" alt="Compressed Waveform Image" /> <!-- 顯示壓縮後的波形圖像 -->
+
     <script>
+        let originalData = []; // 保存原始波形數據
+        let downsampledData = []; // 保存降采樣後的數據
+
         // 处理 CSV 文件並生成波形圖
         function processCSV() {
             const fileInput = document.getElementById('fileInput');
@@ -24,9 +31,9 @@
             const reader = new FileReader();
             reader.onload = function(event) {
                 const csvData = event.target.result;
-                const data = parseCSV(csvData);
-                const downsampledData = downsampleData(data, 10); // 進行降采樣，每10个取1个
-                drawWaveform(downsampledData);
+                originalData = parseCSV(csvData);
+                downsampledData = downsampleData(originalData, 10); // 進行降采樣，每10个取1个
+                drawWaveform(downsampledData, 'waveformImage');
             };
             reader.readAsText(csvFile);
         }
@@ -47,7 +54,7 @@
         }
 
         // 使用 Canvas 生成波形图並顯示為圖像
-        function drawWaveform(data) {
+        function drawWaveform(data, imageId) {
             const canvas = document.createElement('canvas');
             const canvasWidth = 1000;
             const canvasHeight = 500;
@@ -84,8 +91,57 @@
             ctx.stroke();
 
             // 將 Canvas 轉換為圖像並顯示在網頁上
-            const img = document.getElementById('waveformImage');
+            const img = document.getElementById(imageId);
             img.src = canvas.toDataURL(); // 將 Canvas 內容轉換為 base64 圖像
+        }
+
+        // 應用壓縮感知算法
+        function applyCompressedSensing() {
+            const compressionRate = 0.1; // 壓縮比例（保留 10% 的係數）
+
+            // 使用離散余弦變換(DCT)壓縮數據
+            const { reconstructedSignal } = applyCompressedSensingAlgorithm(downsampledData, compressionRate);
+
+            // 繪製壓縮後的波形圖
+            drawWaveform(reconstructedSignal, 'compressedWaveformImage');
+        }
+
+        // 壓縮感知算法（使用離散余弦變換 DCT）
+        function applyCompressedSensingAlgorithm(data, compressionRate) {
+            const signalLength = data.length;
+            
+            // 離散余弦變換（DCT）
+            const dct = (signal) => {
+                return new Float64Array(signal.length).map((_, i) => {
+                    return signal.reduce((sum, x_n, n) => {
+                        return sum + x_n * Math.cos(Math.PI * i * (2 * n + 1) / (2 * signal.length));
+                    }, 0);
+                });
+            };
+
+            // 逆離散余弦變換（IDCT）
+            const idct = (coefficients) => {
+                return new Float64Array(coefficients.length).map((_, n) => {
+                    return coefficients.reduce((sum, X_k, k) => {
+                        return sum + X_k * Math.cos(Math.PI * k * (2 * n + 1) / (2 * coefficients.length));
+                    }, 0) / coefficients.length;
+                });
+            };
+
+            // 應用 DCT
+            const dctCoefficients = dct(data);
+
+            // 保留前 k 個 DCT 係數
+            const k = Math.floor(signalLength * compressionRate);
+            const compressedSignal = new Float64Array(signalLength);
+            for (let i = 0; i < k; i++) {
+                compressedSignal[i] = dctCoefficients[i];
+            }
+
+            // 使用 IDCT 重建信號
+            const reconstructedSignal = idct(compressedSignal);
+
+            return { reconstructedSignal, compressedSignal };
         }
     </script>
 </body>
